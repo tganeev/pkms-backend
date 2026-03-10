@@ -1,0 +1,13 @@
+/opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/PkmsBackendApplication.java
+/opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/config/DataInitializer.java
+/opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/config/WebConfig.java
+/opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/controller/EntryController.java
+/opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/dto/EntryDTO.java
+/opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/dto/WeekViewDTO.java
+/opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/model/Category.java
+/opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/model/Entry.java
+/opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/model/User.java
+/opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/repository/CategoryRepository.java
+/opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/repository/EntryRepository.java
+/opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/repository/UserRepository.java
+/opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/service/EntryService.java
