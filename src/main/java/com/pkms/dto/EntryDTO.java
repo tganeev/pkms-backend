@@ -9,7 +9,7 @@ public class EntryDTO {
     private String category;
     private String practice;
     private String duration;
-    private String period;
+    private String period; // morning, day, evening
     private String repeatInterval;
     private LocalDate entryDate;
 }
