@@ -18,6 +18,7 @@ public class CategoryManagementService {
 
     private final CategoryRepository categoryRepository;
     private final PracticeRepository practiceRepository;
+    private final DynamicTableService dynamicTableService;
 
     @Transactional
     public CategoryDTO createCategory(CategoryDTO categoryDTO) {
@@ -34,7 +35,10 @@ public class CategoryManagementService {
 
         Category savedCategory = categoryRepository.save(category);
 
-        // Если есть практики, создаем их
+        // Создаем динамическую таблицу для категории
+        dynamicTableService.createCategoryTable(savedCategory.getName());
+
+        // Если есть практики, создаем их и добавляем колонки
         if (categoryDTO.getPractices() != null) {
             for (PracticeDTO practiceDTO : categoryDTO.getPractices()) {
                 Practice practice = new Practice();
@@ -44,6 +48,13 @@ public class CategoryManagementService {
                 practice.setUnitType(practiceDTO.getUnitType());
                 practice.setDisplayOrder(practiceDTO.getDisplayOrder());
                 practiceRepository.save(practice);
+
+                // Добавляем колонку в динамическую таблицу
+                dynamicTableService.addPracticeColumn(
+                        savedCategory.getName(),
+                        practiceDTO.getName(),
+                        practiceDTO.getUnitType()
+                );
             }
         }
 
@@ -55,21 +66,49 @@ public class CategoryManagementService {
         Category category = categoryRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Category not found with id: " + id));
 
-        category.setName(categoryDTO.getName());
+        String oldCategoryName = category.getName();
+        String newCategoryName = categoryDTO.getName();
+
+        category.setName(newCategoryName);
         category.setDescription(categoryDTO.getDescription());
         category.setColor(categoryDTO.getColor());
         category.setIcon(categoryDTO.getIcon());
 
         Category updatedCategory = categoryRepository.save(category);
+
+        // Если имя категории изменилось, нужно переименовать таблицу
+        if (!oldCategoryName.equals(newCategoryName)) {
+            // TODO: реализовать переименование таблицы
+            // Это сложнее, так как нужно переименовать саму таблицу
+            // Пока просто создадим новую таблицу, если ее нет
+            dynamicTableService.createCategoryTable(newCategoryName);
+        }
+
         return convertToDTO(updatedCategory);
     }
 
     @Transactional
     public void deleteCategory(Long id) {
+        Category category = categoryRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Category not found with id: " + id));
+
+        String categoryName = category.getName();
+
         // Сначала удаляем все практики категории
         practiceRepository.deleteByCategoryId(id);
+
+        // Удаляем динамическую таблицу
+        try {
+            dynamicTableService.dropCategoryTable(categoryName);
+        } catch (Exception e) {
+            System.err.println("❌ Ошибка при удалении таблицы " + categoryName + ": " + e.getMessage());
+            // Продолжаем выполнение, даже если таблица не удалилась
+        }
+
         // Затем удаляем категорию
         categoryRepository.deleteById(id);
+
+        System.out.println("✅ Категория '" + categoryName + "' и связанные данные удалены");
     }
 
     @Transactional
@@ -85,6 +124,14 @@ public class CategoryManagementService {
         practice.setDisplayOrder(practiceDTO.getDisplayOrder());
 
         Practice savedPractice = practiceRepository.save(practice);
+
+        // Добавляем колонку в динамическую таблицу
+        dynamicTableService.addPracticeColumn(
+                category.getName(),
+                practiceDTO.getName(),
+                practiceDTO.getUnitType()
+        );
+
         return convertToPracticeDTO(savedPractice);
     }
 
@@ -93,17 +140,41 @@ public class CategoryManagementService {
         Practice practice = practiceRepository.findById(practiceId)
                 .orElseThrow(() -> new RuntimeException("Practice not found with id: " + practiceId));
 
-        practice.setName(practiceDTO.getName());
+        String oldPracticeName = practice.getName();
+        String newPracticeName = practiceDTO.getName();
+
+        practice.setName(newPracticeName);
         practice.setDescription(practiceDTO.getDescription());
         practice.setUnitType(practiceDTO.getUnitType());
         practice.setDisplayOrder(practiceDTO.getDisplayOrder());
 
         Practice updatedPractice = practiceRepository.save(practice);
+
+        // Если имя практики изменилось, переименовываем колонку
+        if (!oldPracticeName.equals(newPracticeName)) {
+            dynamicTableService.renamePracticeColumn(
+                    practice.getCategory().getName(),
+                    oldPracticeName,
+                    newPracticeName
+            );
+        }
+
         return convertToPracticeDTO(updatedPractice);
     }
 
+
+
     @Transactional
     public void deletePractice(Long practiceId) {
+        Practice practice = practiceRepository.findById(practiceId)
+                .orElseThrow(() -> new RuntimeException("Practice not found with id: " + practiceId));
+
+        // Удаляем колонку из динамической таблицы
+        dynamicTableService.dropPracticeColumn(
+                practice.getCategory().getName(),
+                practice.getName()
+        );
+
         practiceRepository.deleteById(practiceId);
     }
 

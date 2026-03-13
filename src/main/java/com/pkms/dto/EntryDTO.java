@@ -12,4 +12,5 @@ public class EntryDTO {
     private String period; // morning, day, evening
     private String repeatInterval;
     private LocalDate entryDate;
+    private String status; // 'completed', 'partial', 'failed'
 }
