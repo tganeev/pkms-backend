@@ -29,10 +29,11 @@ public class CalendarEntry {
     private String category;
 
     @Column(nullable = false)
-    private String practice;
+    private String practice; // теперь хранит название стандарта
 
-    @Column(nullable = false)
-    private String duration;
+    // Длительность больше не нужна, так как берется из стандарта
+    // @Column(nullable = false)
+    // private String duration;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
@@ -69,7 +70,6 @@ public class CalendarEntry {
         updatedAt = LocalDateTime.now();
     }
 
-    // Методы для удобства работы со статусом
     public boolean isCompleted() {
         return "completed".equals(status);
     }
@@ -92,7 +92,6 @@ public class CalendarEntry {
                 "id=" + id +
                 ", category='" + category + '\'' +
                 ", practice='" + practice + '\'' +
-                ", duration='" + duration + '\'' +
                 ", period=" + period +
                 ", repeatInterval=" + (repeatInterval != null ? repeatInterval.getDisplayName() : "null") +
                 ", entryDate=" + entryDate +

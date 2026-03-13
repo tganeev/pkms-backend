@@ -15,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.stream.Collectors;
+import org.springframework.dao.EmptyResultDataAccessException;
 
 @Service
 @RequiredArgsConstructor
@@ -30,6 +31,8 @@ public class CalendarService {
     private final DynamicTableService dynamicTableService;
     private final CategoryRepository categoryRepository;
     private final JdbcTemplate jdbcTemplate;
+    private final StandardRepository standardRepository;
+    private final StandardPracticeRepository standardPracticeRepository;
 
     @Transactional
     public EntryDTO createEntry(EntryDTO entryDTO, String username) {
@@ -49,8 +52,7 @@ public class CalendarService {
             CalendarEntry entry = new CalendarEntry();
             entry.setUser(user);
             entry.setCategory(entryDTO.getCategory());
-            entry.setPractice(entryDTO.getPractice());
-            entry.setDuration(entryDTO.getDuration());
+            entry.setPractice(entryDTO.getPractice()); // Сохраняем название стандарта
 
             // Конвертация периода
             Period period;
@@ -191,14 +193,30 @@ public class CalendarService {
             entryStatusRepository.save(entryStatus);
             log.info("Saved EntryStatus record");
 
-            // Если статус "completed", сохраняем значение в динамическую таблицу
+            // Если статус "completed", заполняем значения стандарта
             if ("completed".equals(statusDTO.getStatus())) {
-                log.info("STATUS IS COMPLETED - ATTEMPTING TO SAVE TO DYNAMIC TABLE");
+                log.info("STATUS IS COMPLETED - ATTEMPTING TO FILL STANDARD VALUES");
+
+                // Пытаемся найти стандарт по названию
                 try {
-                    savePracticeValueToDynamicTable(entry);
-                    log.info("✅ SUCCESSFULLY saved to dynamic table");
+                    Category category = categoryRepository.findByName(entry.getCategory())
+                            .orElseThrow(() -> new RuntimeException("Category not found: " + entry.getCategory()));
+
+                    List<Standard> standards = standardRepository.findByCategoryId(category.getId());
+
+                    Standard matchedStandard = standards.stream()
+                            .filter(s -> s.getName().equals(entry.getPractice()))
+                            .findFirst()
+                            .orElse(null);
+
+                    if (matchedStandard != null) {
+                        log.info("Found matching standard: {} (ID: {})", matchedStandard.getName(), matchedStandard.getId());
+                        fillStandardValues(entry, matchedStandard);
+                    } else {
+                        log.warn("No standard found with name: {}", entry.getPractice());
+                    }
                 } catch (Exception e) {
-                    log.error("❌ FAILED to save to dynamic table: {}", e.getMessage(), e);
+                    log.error("Error processing standard: {}", e.getMessage(), e);
                 }
             }
 
@@ -212,161 +230,130 @@ public class CalendarService {
     }
 
     /**
-     * Сохраняет значение практики в динамическую таблицу категории
+     * Заполняет нормативные значения согласно стандарту
      */
-    private void savePracticeValueToDynamicTable(CalendarEntry entry) {
-        log.info("=== SAVE TO DYNAMIC TABLE (FIXED VERSION) ===");
+    private void fillStandardValues(CalendarEntry entry, Standard standard) {
+        log.info("=== FILL STANDARD VALUES ===");
+        log.info("Filling standard values for entry: {}, standard: {}", entry.getId(), standard.getName());
 
         try {
             String tableName = entry.getCategory().toLowerCase() + "_practices";
-            String columnName = entry.getPractice().toLowerCase().replace(" ", "_");
-            String dateStr = entry.getEntryDate().toString();
-            String value = entry.getDuration();
+            LocalDate entryDate = entry.getEntryDate();
 
-            log.info("Table: {}, Column: {}, Date: {}, Value: {}",
-                    tableName, columnName, dateStr, value);
+            log.info("Table: {}, Date: {}", tableName, entryDate);
 
-            // Извлекаем числовое значение
-            Integer numericValue = null;
-            try {
-                numericValue = Integer.parseInt(value.replaceAll("[^0-9]", ""));
-                log.info("Parsed numeric value: {}", numericValue);
-            } catch (Exception e) {
-                log.warn("Could not parse numeric value: {}, storing as string", value);
+            // Получаем все практики из стандарта
+            List<StandardPractice> standardPractices = standardPracticeRepository.findByStandardId(standard.getId());
+            log.info("Found {} practices in standard", standardPractices.size());
+
+            for (StandardPractice sp : standardPractices) {
+                if (Boolean.TRUE.equals(sp.getIsActive())) {
+                    String practiceName = sp.getPractice().getName();
+                    String columnName = getColumnName(practiceName);
+                    Integer targetValue = sp.getTargetValue();
+
+                    log.info("Setting practice '{}' to target value: {} for date {}",
+                            practiceName, targetValue, entryDate);
+
+                    // Проверяем, существует ли таблица
+                    String checkTableQuery = "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = ?)";
+                    Boolean tableExists = jdbcTemplate.queryForObject(checkTableQuery, Boolean.class, tableName);
+
+                    if (!tableExists) {
+                        log.warn("Table {} does not exist, creating...", tableName);
+                        dynamicTableService.createCategoryTable(entry.getCategory());
+                    }
+
+                    // Проверяем, существует ли колонка
+                    String checkColumnQuery = "SELECT EXISTS (SELECT FROM information_schema.columns WHERE table_name = ? AND column_name = ?)";
+                    Boolean columnExists = jdbcTemplate.queryForObject(checkColumnQuery, Boolean.class, tableName, columnName);
+
+                    if (!columnExists) {
+                        log.warn("Column {} does not exist in table {}, creating...", columnName, tableName);
+                        String columnType = "INTEGER";
+                        String addColumnQuery = String.format("ALTER TABLE %s ADD COLUMN %s %s", tableName, columnName, columnType);
+                        jdbcTemplate.execute(addColumnQuery);
+                        log.info("Column created: {}", columnName);
+                    }
+
+                    // Вставляем или обновляем данные
+                    String checkQuery = String.format("SELECT COUNT(*) FROM %s WHERE entry_date = ?", tableName);
+                    Integer count = jdbcTemplate.queryForObject(checkQuery, Integer.class, entryDate);
+
+                    if (count != null && count > 0) {
+                        String updateQuery = String.format(
+                                "UPDATE %s SET %s = ?, updated_at = CURRENT_TIMESTAMP WHERE entry_date = ?",
+                                tableName, columnName
+                        );
+                        int updated = jdbcTemplate.update(updateQuery, targetValue, entryDate);
+                        log.info("Updated {} rows for column {}", updated, columnName);
+                    } else {
+                        String insertQuery = String.format(
+                                "INSERT INTO %s (entry_date, %s, created_at, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+                                tableName, columnName
+                        );
+                        int inserted = jdbcTemplate.update(insertQuery, entryDate, targetValue);
+                        log.info("Inserted {} rows for column {}", inserted, columnName);
+                    }
+
+                    // Проверяем, что данные сохранились
+                    String verifyQuery = String.format("SELECT %s FROM %s WHERE entry_date = ?", columnName, tableName);
+                    try {
+                        Object savedValue = jdbcTemplate.queryForObject(verifyQuery, Object.class, entryDate);
+                        log.info("Verified saved value for {}: {}", columnName, savedValue);
+                    } catch (EmptyResultDataAccessException e) {
+                        log.warn("Could not verify saved value for {}", columnName);
+                    }
+                }
             }
 
-            // Проверяем существование таблицы
-            String checkTableQuery = "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = ?)";
-            Boolean tableExists = jdbcTemplate.queryForObject(checkTableQuery, Boolean.class, tableName);
-            log.info("Table exists: {}", tableExists);
-
-            if (!tableExists) {
-                log.warn("Table {} does not exist, creating...", tableName);
-                String createTableQuery = String.format(
-                        "CREATE TABLE %s (id SERIAL PRIMARY KEY, entry_date DATE NOT NULL UNIQUE, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)",
-                        tableName
-                );
-                jdbcTemplate.execute(createTableQuery);
-                log.info("Table created: {}", tableName);
-
-                // Создаем индекс
-                String createIndexQuery = String.format(
-                        "CREATE INDEX idx_%s_date ON %s(entry_date)",
-                        tableName, tableName
-                );
-                jdbcTemplate.execute(createIndexQuery);
-            }
-
-            // Проверяем существование колонки
-            String checkColumnQuery = "SELECT EXISTS (SELECT FROM information_schema.columns WHERE table_name = ? AND column_name = ?)";
-            Boolean columnExists = jdbcTemplate.queryForObject(checkColumnQuery, Boolean.class, tableName, columnName);
-            log.info("Column exists: {}", columnExists);
-
-            if (!columnExists) {
-                log.warn("Column {} does not exist in table {}, creating...", columnName, tableName);
-                String columnType = numericValue != null ? "INTEGER" : "VARCHAR(255)";
-                String addColumnQuery = String.format("ALTER TABLE %s ADD COLUMN %s %s", tableName, columnName, columnType);
-                jdbcTemplate.execute(addColumnQuery);
-                log.info("Column created: {} ({})", columnName, columnType);
-            }
-
-            // Вставляем или обновляем данные
-            int result;
-            if (numericValue != null) {
-                // Для числовых значений
-                String upsertQuery = String.format(
-                        "INSERT INTO %s (entry_date, %s) VALUES (CAST(? AS DATE), ?) ON CONFLICT (entry_date) DO UPDATE SET %s = ?, updated_at = CURRENT_TIMESTAMP",
-                        tableName, columnName, columnName
-                );
-
-                result = jdbcTemplate.update(upsertQuery, dateStr, numericValue, numericValue);
-                log.info("Upsert result: {} rows affected", result);
-            } else {
-                // Для строковых значений
-                String upsertQuery = String.format(
-                        "INSERT INTO %s (entry_date, %s) VALUES (CAST(? AS DATE), ?) ON CONFLICT (entry_date) DO UPDATE SET %s = ?, updated_at = CURRENT_TIMESTAMP",
-                        tableName, columnName, columnName
-                );
-
-                result = jdbcTemplate.update(upsertQuery, dateStr, value, value);
-                log.info("Upsert result: {} rows affected", result);
-            }
-
-            // Проверяем, что данные сохранились
-            String verifyQuery = String.format("SELECT %s FROM %s WHERE entry_date = CAST(? AS DATE)", columnName, tableName);
-            Object savedValue = jdbcTemplate.queryForObject(verifyQuery, Object.class, dateStr);
-            log.info("Verified saved value: {}", savedValue);
-
-            log.info("✅ Successfully saved to dynamic table for {}.{} on {}",
-                    entry.getCategory(), entry.getPractice(), entry.getEntryDate());
+            log.info("✅ Successfully filled standard values for date: {}", entryDate);
 
         } catch (Exception e) {
-            log.error("❌ Error in savePracticeValueToDynamicTable: {}", e.getMessage(), e);
+            log.error("❌ Error filling standard values: {}", e.getMessage(), e);
             throw e;
         }
     }
 
-    private void saveYogaPractice(CalendarEntry entry) {
-        log.info("=== SAVE YOGA PRACTICE ===");
+    /**
+     * Получает имя колонки из названия практики
+     */
+    private String getColumnName(String practiceName) {
+        if (practiceName == null || practiceName.trim().isEmpty()) {
+            return "";
+        }
 
-        try {
-            log.info("Saving yoga practice for date: {}", entry.getEntryDate());
+        String result = practiceName.toLowerCase()
+                .trim()
+                .replaceAll("\\s+", "_")
+                .replaceAll("[^a-z0-9а-яё_]", "")
+                .replaceAll("_+", "_");
 
-            YogaPractice yogaPractice = yogaPracticeRepository
-                    .findByEntryDate(entry.getEntryDate())
-                    .orElse(new YogaPractice());
+        // Если после всех преобразований строка пустая, используем транслитерацию
+        if (result.isEmpty()) {
+            String translit = practiceName.toLowerCase()
+                    .replace("а", "a").replace("б", "b").replace("в", "v")
+                    .replace("г", "g").replace("д", "d").replace("е", "e")
+                    .replace("ё", "e").replace("ж", "zh").replace("з", "z")
+                    .replace("и", "i").replace("й", "y").replace("к", "k")
+                    .replace("л", "l").replace("м", "m").replace("н", "n")
+                    .replace("о", "o").replace("п", "p").replace("р", "r")
+                    .replace("с", "s").replace("т", "t").replace("у", "u")
+                    .replace("ф", "f").replace("х", "kh").replace("ц", "ts")
+                    .replace("ч", "ch").replace("ш", "sh").replace("щ", "sch")
+                    .replace("ъ", "").replace("ы", "y").replace("ь", "")
+                    .replace("э", "e").replace("ю", "yu").replace("я", "ya")
+                    .replaceAll("[^a-z0-9]", "_");
 
-            yogaPractice.setEntryDate(entry.getEntryDate());
+            result = translit.replaceAll("_+", "_");
 
-            // Парсим числовое значение из строки типа "30 мин"
-            Integer value = parseDuration(entry.getDuration());
-            log.info("Parsed duration: {} -> {}", entry.getDuration(), value);
-
-            // Устанавливаем значения в зависимости от практики
-            switch (entry.getPractice()) {
-                case "Концентрация":
-                    yogaPractice.setConcentrationMin(value);
-                    log.info("Set concentration to {} min", value);
-                    break;
-                case "Аналитическая медитация":
-                    yogaPractice.setAnalyticalMeditationMin(value);
-                    log.info("Set analytical meditation to {} min", value);
-                    break;
-                case "Пранаяма":
-                    yogaPractice.setPranayamaMin(value);
-                    log.info("Set pranayama to {} min", value);
-                    break;
-                case "Экадаш":
-                    yogaPractice.setEkadashCount(value);
-                    log.info("Set ekadash to {} times", value);
-                    break;
-                case "Подъем":
-                    log.info("Wake up time - not implemented yet");
-                    break;
-                case "Отбой":
-                    log.info("Sleep time - not implemented yet");
-                    break;
-                default:
-                    log.warn("Unknown yoga practice: {}", entry.getPractice());
+            if (result.isEmpty()) {
+                result = "practice_" + System.currentTimeMillis();
             }
-
-            yogaPracticeRepository.save(yogaPractice);
-            log.info("✅ Successfully saved yoga practice for date: {}", entry.getEntryDate());
-
-        } catch (Exception e) {
-            log.error("❌ Error saving yoga practice: {}", e.getMessage(), e);
-            throw e;
         }
-    }
 
-    private Integer parseDuration(String duration) {
-        try {
-            // Парсим строки типа "30 мин" в число
-            return Integer.parseInt(duration.replaceAll("[^0-9]", ""));
-        } catch (NumberFormatException e) {
-            log.warn("Could not parse duration: {}", duration);
-            return 0;
-        }
+        log.debug("Generated column name '{}' from practice name '{}'", result, practiceName);
+        return result;
     }
 
     public List<PracticeStandard> getStandardsByCategory(String categoryName) {
@@ -388,7 +375,6 @@ public class CalendarService {
         dto.setId(entry.getId());
         dto.setCategory(entry.getCategory());
         dto.setPractice(entry.getPractice());
-        dto.setDuration(entry.getDuration());
         dto.setStatus(entry.getStatus());
 
         // Маппинг периода

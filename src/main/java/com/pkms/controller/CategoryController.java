@@ -2,6 +2,8 @@ package com.pkms.controller;
 
 import com.pkms.dto.CategoryDTO;
 import com.pkms.dto.PracticeDTO;
+import com.pkms.dto.StandardDTO;
+import com.pkms.service.StandardService;
 import com.pkms.dto.CategoryTableDTO;
 import com.pkms.model.Category;
 import com.pkms.repository.CategoryRepository;
@@ -21,6 +23,28 @@ public class CategoryController {
     private final CategoryRepository categoryRepository;
     private final CategoryTableService categoryTableService;
     private final CategoryManagementService categoryManagementService;
+    private final StandardService standardService;
+
+    @GetMapping("/{categoryId}/standards")
+    public List<StandardDTO> getCategoryStandards(@PathVariable Long categoryId) {
+        return standardService.getStandardsByCategory(categoryId);
+    }
+
+    @PostMapping("/{categoryId}/standards")
+    public StandardDTO createStandard(@PathVariable Long categoryId, @RequestBody StandardDTO standardDTO) {
+        standardDTO.setCategoryId(categoryId);
+        return standardService.createStandard(standardDTO);
+    }
+
+    @PutMapping("/standards/{standardId}")
+    public StandardDTO updateStandard(@PathVariable Long standardId, @RequestBody StandardDTO standardDTO) {
+        return standardService.updateStandard(standardId, standardDTO);
+    }
+
+    @DeleteMapping("/standards/{standardId}")
+    public void deleteStandard(@PathVariable Long standardId) {
+        standardService.deleteStandard(standardId);
+    }
 
     @GetMapping
     public List<Category> getAllCategories() {
