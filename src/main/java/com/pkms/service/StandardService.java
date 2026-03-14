@@ -2,6 +2,7 @@ package com.pkms.service;
 
 import com.pkms.dto.StandardDTO;
 import com.pkms.dto.StandardPracticeDTO;
+import com.pkms.dto.StandardStatsDTO;
 import com.pkms.model.*;
 import com.pkms.repository.*;
 import lombok.RequiredArgsConstructor;
@@ -9,6 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -20,8 +22,10 @@ public class StandardService {
 
     private final StandardRepository standardRepository;
     private final StandardPracticeRepository standardPracticeRepository;
+    private final StandardStatsRepository standardStatsRepository;
     private final CategoryRepository categoryRepository;
     private final PracticeRepository practiceRepository;
+    private final CalendarRepository calendarRepository;
 
     @Transactional
     public StandardDTO createStandard(StandardDTO standardDTO) {
@@ -34,9 +38,12 @@ public class StandardService {
         standard.setName(standardDTO.getName());
         standard.setDescription(standardDTO.getDescription());
         standard.setCategory(category);
+        standard.setStartDate(standardDTO.getStartDate());
+        standard.setEndDate(standardDTO.getEndDate());
 
         Standard savedStandard = standardRepository.save(standard);
-        log.info("Standard saved with ID: {}", savedStandard.getId());
+        log.info("Standard saved with ID: {}, startDate: {}, endDate: {}",
+                savedStandard.getId(), savedStandard.getStartDate(), savedStandard.getEndDate());
 
         // Добавляем практики в стандарт
         if (standardDTO.getPractices() != null && !standardDTO.getPractices().isEmpty()) {
@@ -71,6 +78,8 @@ public class StandardService {
 
         standard.setName(standardDTO.getName());
         standard.setDescription(standardDTO.getDescription());
+        standard.setStartDate(standardDTO.getStartDate());
+        standard.setEndDate(standardDTO.getEndDate());
 
         // Удаляем старые практики
         standardPracticeRepository.deleteByStandardId(id);
@@ -94,26 +103,94 @@ public class StandardService {
             }
         }
 
-        return convertToDTO(standard);
+        Standard updatedStandard = standardRepository.save(standard);
+        return convertToDTO(updatedStandard);
     }
 
     @Transactional
     public void deleteStandard(Long id) {
         log.info("Deleting standard ID: {}", id);
         standardPracticeRepository.deleteByStandardId(id);
+        standardStatsRepository.deleteByStandardId(id);
         standardRepository.deleteById(id);
     }
 
     public List<StandardDTO> getStandardsByCategory(Long categoryId) {
         log.info("Getting standards for category ID: {}", categoryId);
 
-        List<Standard> standards = standardRepository.findByCategoryIdOrderByCreatedAtDesc(categoryId);
+        List<Standard> standards = standardRepository.findByCategoryIdOrderByStartDateDesc(categoryId);
         return standards.stream()
                 .map(this::convertToDTO)
                 .collect(Collectors.toList());
     }
 
+    public List<StandardStatsDTO> getAllStandardsStats() {
+        log.info("Getting stats for all standards");
 
+        List<Standard> allStandards = standardRepository.findAll();
+        return allStandards.stream()
+                .map(this::convertToStatsDTO)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional
+    public void recordStandardExecution(Long standardId, LocalDate executionDate) {
+        log.info("Recording execution for standard ID: {} on date: {}", standardId, executionDate);
+
+        Standard standard = standardRepository.findById(standardId)
+                .orElseThrow(() -> new RuntimeException("Standard not found"));
+
+        // Проверяем, была ли уже запись на эту дату
+        if (standardStatsRepository.findByStandardIdAndExecutionDate(standardId, executionDate).isEmpty()) {
+            StandardStats stats = new StandardStats();
+            stats.setStandard(standard);
+            stats.setExecutionDate(executionDate);
+            standardStatsRepository.save(stats);
+            log.info("Recorded execution for standard {}", standardId);
+        }
+    }
+
+    private StandardStatsDTO convertToStatsDTO(Standard standard) {
+        StandardStatsDTO dto = new StandardStatsDTO();
+        dto.setStandardId(standard.getId());
+        dto.setStandardName(standard.getName());
+        dto.setCategoryName(standard.getCategory().getName());
+        dto.setStartDate(standard.getStartDate());
+        dto.setEndDate(standard.getEndDate());
+        dto.setActive(standard.isActive());
+
+        try {
+            // Получаем статистику выполнения
+            Long totalDays = standardStatsRepository.countTotalDaysByStandardId(standard.getId());
+            dto.setTotalDays(totalDays != null ? totalDays : 0L);
+
+            Integer maxConsecutive = standardStatsRepository.findMaxConsecutiveDays(standard.getId());
+            dto.setMaxConsecutiveDays(maxConsecutive != null ? maxConsecutive : 0);
+        } catch (Exception e) {
+            log.warn("Could not calculate stats for standard {}: {}", standard.getId(), e.getMessage());
+            dto.setTotalDays(0L);
+            dto.setMaxConsecutiveDays(0);
+        }
+
+        // Получаем практики стандарта
+        List<StandardPracticeDTO> practices = standardPracticeRepository.findByStandardId(standard.getId())
+                .stream()
+                .map(sp -> {
+                    StandardPracticeDTO spDto = new StandardPracticeDTO();
+                    spDto.setId(sp.getId());
+                    spDto.setPracticeId(sp.getPractice().getId());
+                    spDto.setPracticeName(sp.getPractice().getName());
+                    spDto.setTargetValue(sp.getTargetValue());
+                    spDto.setUnitType(sp.getUnitType());
+                    spDto.setIsActive(sp.getIsActive());
+                    return spDto;
+                })
+                .collect(Collectors.toList());
+
+        dto.setPractices(practices);
+
+        return dto;
+    }
 
     private StandardDTO convertToDTO(Standard standard) {
         StandardDTO dto = new StandardDTO();
@@ -122,6 +199,8 @@ public class StandardService {
         dto.setDescription(standard.getDescription());
         dto.setCategoryId(standard.getCategory().getId());
         dto.setCategoryName(standard.getCategory().getName());
+        dto.setStartDate(standard.getStartDate());
+        dto.setEndDate(standard.getEndDate());
 
         List<StandardPracticeDTO> practices = standardPracticeRepository.findByStandardId(standard.getId())
                 .stream()

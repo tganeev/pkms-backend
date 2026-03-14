@@ -2,16 +2,17 @@ package com.pkms.dto;
 
 import lombok.Data;
 import java.time.LocalDate;
-import java.util.List;
+import java.util.*;
 
 @Data
-public class StandardDTO {
-    private Long id;
-    private String name;
-    private String description;
-    private Long categoryId;
+public class StandardStatsDTO {
+    private Long standardId;
+    private String standardName;
     private String categoryName;
     private LocalDate startDate;
     private LocalDate endDate;
+    private boolean isActive;
+    private Long totalDays;
+    private Integer maxConsecutiveDays;
     private List<StandardPracticeDTO> practices;
 }

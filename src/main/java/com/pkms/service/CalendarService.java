@@ -33,6 +33,8 @@ public class CalendarService {
     private final JdbcTemplate jdbcTemplate;
     private final StandardRepository standardRepository;
     private final StandardPracticeRepository standardPracticeRepository;
+    private final StandardService standardService;
+    private final StandardStatsRepository standardStatsRepository;
 
     @Transactional
     public EntryDTO createEntry(EntryDTO entryDTO, String username) {
@@ -307,6 +309,9 @@ public class CalendarService {
                 }
             }
 
+            // Записываем статистику выполнения стандарта
+            standardService.recordStandardExecution(standard.getId(), entry.getEntryDate());
+
             log.info("✅ Successfully filled standard values for date: {}", entryDate);
 
         } catch (Exception e) {
@@ -355,6 +360,8 @@ public class CalendarService {
         log.debug("Generated column name '{}' from practice name '{}'", result, practiceName);
         return result;
     }
+
+    // УДАЛЯЕМ МЕТОДЫ saveYogaPractice И parseDuration, ТАК КАК ОНИ ИСПОЛЬЗУЮТ duration
 
     public List<PracticeStandard> getStandardsByCategory(String categoryName) {
         log.info("Getting standards for category: {}", categoryName);

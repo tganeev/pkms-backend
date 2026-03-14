@@ -3,6 +3,7 @@ package com.pkms.model;
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -25,6 +26,12 @@ public class Standard {
 
     private String description;
 
+    @Column(name = "start_date", nullable = false)
+    private LocalDate startDate; // Дата ввода стандарта
+
+    @Column(name = "end_date")
+    private LocalDate endDate; // Дата вывода стандарта (null если действует)
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 
@@ -34,5 +41,17 @@ public class Standard {
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();
+        if (startDate == null) {
+            startDate = LocalDate.now(); // По умолчанию - сегодня
+        }
+    }
+
+    // Метод для определения статуса стандарта
+    public boolean isActive() {
+        LocalDate today = LocalDate.now();
+        if (startDate == null) return false;
+        if (today.isBefore(startDate)) return false;
+        if (endDate != null && today.isAfter(endDate)) return false;
+        return true;
     }
 }
