@@ -35,6 +35,8 @@ public class CalendarService {
     private final StandardPracticeRepository standardPracticeRepository;
     private final StandardService standardService;
     private final StandardStatsRepository standardStatsRepository;
+    private final PracticeLinkRepository practiceLinkRepository; // ДОБАВЛЕНО
+    private final PracticeRepository practiceRepository; // ДОБАВЛЕНО
 
     @Transactional
     public EntryDTO createEntry(EntryDTO entryDTO, String username) {
@@ -54,7 +56,7 @@ public class CalendarService {
             CalendarEntry entry = new CalendarEntry();
             entry.setUser(user);
             entry.setCategory(entryDTO.getCategory());
-            entry.setPractice(entryDTO.getPractice()); // Сохраняем название стандарта
+            entry.setPractice(entryDTO.getPractice());
 
             // Конвертация периода
             Period period;
@@ -198,13 +200,23 @@ public class CalendarService {
             // Если статус "completed", заполняем значения стандарта
             if ("completed".equals(statusDTO.getStatus())) {
                 log.info("STATUS IS COMPLETED - ATTEMPTING TO FILL STANDARD VALUES");
+                log.info("Entry category: {}, practice: {}", entry.getCategory(), entry.getPractice());
 
-                // Пытаемся найти стандарт по названию
                 try {
+                    // Пытаемся найти стандарт по названию
                     Category category = categoryRepository.findByName(entry.getCategory())
                             .orElseThrow(() -> new RuntimeException("Category not found: " + entry.getCategory()));
 
+                    log.info("Found category with ID: {}", category.getId());
+
                     List<Standard> standards = standardRepository.findByCategoryId(category.getId());
+                    log.info("Found {} standards in category", standards.size());
+
+                    // Логируем все стандарты для отладки
+                    for (Standard s : standards) {
+                        log.info("Standard in category: name={}, startDate={}, endDate={}, isActive={}",
+                                s.getName(), s.getStartDate(), s.getEndDate(), s.isActive());
+                    }
 
                     Standard matchedStandard = standards.stream()
                             .filter(s -> s.getName().equals(entry.getPractice()))
@@ -213,9 +225,28 @@ public class CalendarService {
 
                     if (matchedStandard != null) {
                         log.info("Found matching standard: {} (ID: {})", matchedStandard.getName(), matchedStandard.getId());
-                        fillStandardValues(entry, matchedStandard);
+                        log.info("Standard startDate: {}, endDate: {}, isActive: {}",
+                                matchedStandard.getStartDate(), matchedStandard.getEndDate(), matchedStandard.isActive());
+
+                        // Проверяем, активен ли стандарт
+                        if (matchedStandard.isActive()) {
+                            log.info("Standard is active, proceeding to save values");
+
+                            // Находим практику по названию
+                            Practice practice = practiceRepository.findByCategoryIdAndName(category.getId(), entry.getPractice())
+                                    .orElseThrow(() -> new RuntimeException("Practice not found"));
+
+                            log.info("Found practice with ID: {}", practice.getId());
+
+                            // Сохраняем значение с учетом связей
+                            savePracticeValueWithLinks(entry, matchedStandard);
+                        } else {
+                            log.warn("Standard is not active, skipping value saving");
+                        }
                     } else {
                         log.warn("No standard found with name: {}", entry.getPractice());
+                        log.info("Available standard names: {}",
+                                standards.stream().map(Standard::getName).collect(Collectors.toList()));
                     }
                 } catch (Exception e) {
                     log.error("Error processing standard: {}", e.getMessage(), e);
@@ -232,91 +263,146 @@ public class CalendarService {
     }
 
     /**
-     * Заполняет нормативные значения согласно стандарту
+     * Сохраняет значение практики и всех связанных с ней практик
      */
-    private void fillStandardValues(CalendarEntry entry, Standard standard) {
-        log.info("=== FILL STANDARD VALUES ===");
-        log.info("Filling standard values for entry: {}, standard: {}", entry.getId(), standard.getName());
+    private void savePracticeValueWithLinks(CalendarEntry entry, Standard matchedStandard) {
+        log.info("=== SAVE PRACTICE WITH LINKS ===");
 
         try {
-            String tableName = entry.getCategory().toLowerCase() + "_practices";
-            LocalDate entryDate = entry.getEntryDate();
+            // Находим практику по названию
+            Category category = categoryRepository.findByName(entry.getCategory())
+                    .orElseThrow(() -> new RuntimeException("Category not found"));
 
-            log.info("Table: {}, Date: {}", tableName, entryDate);
+            Practice practice = practiceRepository.findByCategoryIdAndName(category.getId(), entry.getPractice())
+                    .orElseThrow(() -> new RuntimeException("Practice not found"));
 
-            // Получаем все практики из стандарта
-            List<StandardPractice> standardPractices = standardPracticeRepository.findByStandardId(standard.getId());
-            log.info("Found {} practices in standard", standardPractices.size());
+            // Сохраняем значение в основную практику
+            saveSinglePracticeValue(entry, practice, matchedStandard);
 
-            for (StandardPractice sp : standardPractices) {
-                if (Boolean.TRUE.equals(sp.getIsActive())) {
-                    String practiceName = sp.getPractice().getName();
-                    String columnName = getColumnName(practiceName);
-                    Integer targetValue = sp.getTargetValue();
+            // Находим все связанные практики, для которых текущая является источником
+            List<PracticeLink> links = practiceLinkRepository.findBySourcePracticeId(practice.getId());
 
-                    log.info("Setting practice '{}' to target value: {} for date {}",
-                            practiceName, targetValue, entryDate);
+            for (PracticeLink link : links) {
+                Practice targetPractice = link.getTargetPractice();
+                log.info("Adding value to linked practice: {} in category {}",
+                        targetPractice.getName(), targetPractice.getCategory().getName());
 
-                    // Проверяем, существует ли таблица
-                    String checkTableQuery = "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = ?)";
-                    Boolean tableExists = jdbcTemplate.queryForObject(checkTableQuery, Boolean.class, tableName);
+                // Создаем копию entry для связанной практики
+                CalendarEntry linkedEntry = new CalendarEntry();
+                linkedEntry.setUser(entry.getUser());
+                linkedEntry.setCategory(targetPractice.getCategory().getName());
+                linkedEntry.setPractice(targetPractice.getName());
+                linkedEntry.setPeriod(entry.getPeriod());
+                linkedEntry.setEntryDate(entry.getEntryDate());
+                linkedEntry.setRepeatInterval(entry.getRepeatInterval());
+                linkedEntry.setStatus(entry.getStatus());
 
-                    if (!tableExists) {
-                        log.warn("Table {} does not exist, creating...", tableName);
-                        dynamicTableService.createCategoryTable(entry.getCategory());
-                    }
-
-                    // Проверяем, существует ли колонка
-                    String checkColumnQuery = "SELECT EXISTS (SELECT FROM information_schema.columns WHERE table_name = ? AND column_name = ?)";
-                    Boolean columnExists = jdbcTemplate.queryForObject(checkColumnQuery, Boolean.class, tableName, columnName);
-
-                    if (!columnExists) {
-                        log.warn("Column {} does not exist in table {}, creating...", columnName, tableName);
-                        String columnType = "INTEGER";
-                        String addColumnQuery = String.format("ALTER TABLE %s ADD COLUMN %s %s", tableName, columnName, columnType);
-                        jdbcTemplate.execute(addColumnQuery);
-                        log.info("Column created: {}", columnName);
-                    }
-
-                    // Вставляем или обновляем данные
-                    String checkQuery = String.format("SELECT COUNT(*) FROM %s WHERE entry_date = ?", tableName);
-                    Integer count = jdbcTemplate.queryForObject(checkQuery, Integer.class, entryDate);
-
-                    if (count != null && count > 0) {
-                        String updateQuery = String.format(
-                                "UPDATE %s SET %s = ?, updated_at = CURRENT_TIMESTAMP WHERE entry_date = ?",
-                                tableName, columnName
-                        );
-                        int updated = jdbcTemplate.update(updateQuery, targetValue, entryDate);
-                        log.info("Updated {} rows for column {}", updated, columnName);
-                    } else {
-                        String insertQuery = String.format(
-                                "INSERT INTO %s (entry_date, %s, created_at, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
-                                tableName, columnName
-                        );
-                        int inserted = jdbcTemplate.update(insertQuery, entryDate, targetValue);
-                        log.info("Inserted {} rows for column {}", inserted, columnName);
-                    }
-
-                    // Проверяем, что данные сохранились
-                    String verifyQuery = String.format("SELECT %s FROM %s WHERE entry_date = ?", columnName, tableName);
-                    try {
-                        Object savedValue = jdbcTemplate.queryForObject(verifyQuery, Object.class, entryDate);
-                        log.info("Verified saved value for {}: {}", columnName, savedValue);
-                    } catch (EmptyResultDataAccessException e) {
-                        log.warn("Could not verify saved value for {}", columnName);
-                    }
-                }
+                // Сохраняем значение в связанную практику
+                saveSinglePracticeValue(linkedEntry, targetPractice, null);
             }
 
-            // Записываем статистику выполнения стандарта
-            standardService.recordStandardExecution(standard.getId(), entry.getEntryDate());
-
-            log.info("✅ Successfully filled standard values for date: {}", entryDate);
-
         } catch (Exception e) {
-            log.error("❌ Error filling standard values: {}", e.getMessage(), e);
-            throw e;
+            log.error("Error saving practice with links: {}", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Сохраняет значение одной практики
+     */
+    private void saveSinglePracticeValue(CalendarEntry entry, Practice practice, Standard matchedStandard) {
+        log.info("Saving value for practice: {} in category {}",
+                practice.getName(), practice.getCategory().getName());
+
+        String tableName = practice.getCategory().getName().toLowerCase() + "_practices";
+        String columnName = getColumnName(practice.getName());
+        LocalDate entryDate = entry.getEntryDate();
+
+        // Получаем целевое значение (из стандарта или из entry)
+        Integer targetValue = null;
+        if (matchedStandard != null) {
+            // Ищем в стандарте значение для этой практики
+            targetValue = matchedStandard.getStandardPractices().stream()
+                    .filter(sp -> sp.getPractice().getId().equals(practice.getId()))
+                    .map(StandardPractice::getTargetValue)
+                    .findFirst()
+                    .orElse(null);
+        }
+
+        if (targetValue == null) {
+            log.warn("No target value found for practice {}", practice.getName());
+            return;
+        }
+
+        // Проверяем, существует ли таблица
+        ensureTableExists(practice.getCategory().getName());
+        ensureColumnExists(tableName, columnName);
+
+        // Получаем текущее значение (если есть)
+        Integer currentValue = getCurrentPracticeValue(tableName, columnName, entryDate);
+
+        // Суммируем значения
+        int newValue = (currentValue != null ? currentValue : 0) + targetValue;
+        log.info("Current value: {}, adding: {}, new value: {}", currentValue, targetValue, newValue);
+
+        // Сохраняем новое значение
+        savePracticeValueToTable(tableName, columnName, entryDate, newValue);
+    }
+
+    /**
+     * Проверяет существование таблицы и создает ее при необходимости
+     */
+    private void ensureTableExists(String categoryName) {
+        dynamicTableService.createCategoryTable(categoryName);
+    }
+
+    /**
+     * Проверяет существование колонки и создает ее при необходимости
+     */
+    private void ensureColumnExists(String tableName, String columnName) {
+        String checkColumnQuery = "SELECT EXISTS (SELECT FROM information_schema.columns WHERE table_name = ? AND column_name = ?)";
+        Boolean columnExists = jdbcTemplate.queryForObject(checkColumnQuery, Boolean.class, tableName, columnName);
+
+        if (!columnExists) {
+            log.warn("Column {} does not exist in table {}, creating...", columnName, tableName);
+            String addColumnQuery = String.format("ALTER TABLE %s ADD COLUMN %s INTEGER", tableName, columnName);
+            jdbcTemplate.execute(addColumnQuery);
+            log.info("Column created: {}", columnName);
+        }
+    }
+
+    /**
+     * Получает текущее значение практики из таблицы
+     */
+    private Integer getCurrentPracticeValue(String tableName, String columnName, LocalDate date) {
+        try {
+            String query = String.format("SELECT %s FROM %s WHERE entry_date = ?", columnName, tableName);
+            return jdbcTemplate.queryForObject(query, Integer.class, date);
+        } catch (EmptyResultDataAccessException e) {
+            return null; // Нет записи на эту дату
+        }
+    }
+
+    /**
+     * Сохраняет значение в таблицу
+     */
+    private void savePracticeValueToTable(String tableName, String columnName, LocalDate date, Integer value) {
+        String checkQuery = String.format("SELECT COUNT(*) FROM %s WHERE entry_date = ?", tableName);
+        Integer count = jdbcTemplate.queryForObject(checkQuery, Integer.class, date);
+
+        if (count != null && count > 0) {
+            String updateQuery = String.format(
+                    "UPDATE %s SET %s = ?, updated_at = CURRENT_TIMESTAMP WHERE entry_date = ?",
+                    tableName, columnName
+            );
+            jdbcTemplate.update(updateQuery, value, date);
+            log.info("Updated {} to {}", columnName, value);
+        } else {
+            String insertQuery = String.format(
+                    "INSERT INTO %s (entry_date, %s, created_at, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+                    tableName, columnName
+            );
+            jdbcTemplate.update(insertQuery, date, value);
+            log.info("Inserted {} with value {}", columnName, value);
         }
     }
 
@@ -334,7 +420,6 @@ public class CalendarService {
                 .replaceAll("[^a-z0-9а-яё_]", "")
                 .replaceAll("_+", "_");
 
-        // Если после всех преобразований строка пустая, используем транслитерацию
         if (result.isEmpty()) {
             String translit = practiceName.toLowerCase()
                     .replace("а", "a").replace("б", "b").replace("в", "v")
@@ -361,8 +446,6 @@ public class CalendarService {
         return result;
     }
 
-    // УДАЛЯЕМ МЕТОДЫ saveYogaPractice И parseDuration, ТАК КАК ОНИ ИСПОЛЬЗУЮТ duration
-
     public List<PracticeStandard> getStandardsByCategory(String categoryName) {
         log.info("Getting standards for category: {}", categoryName);
 
@@ -384,7 +467,6 @@ public class CalendarService {
         dto.setPractice(entry.getPractice());
         dto.setStatus(entry.getStatus());
 
-        // Маппинг периода
         String periodCode;
         switch (entry.getPeriod()) {
             case morning:
@@ -401,7 +483,6 @@ public class CalendarService {
         }
         dto.setPeriod(periodCode);
 
-        // Маппинг интервала повторения
         if (entry.getRepeatInterval() != null) {
             dto.setRepeatInterval(entry.getRepeatInterval().getDisplayName());
         } else {

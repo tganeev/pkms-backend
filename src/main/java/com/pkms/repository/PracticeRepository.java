@@ -8,10 +8,13 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface PracticeRepository extends JpaRepository<Practice, Long> {
     List<Practice> findByCategoryId(Long categoryId);
+
+    Optional<Practice> findByCategoryIdAndName(Long categoryId, String name);
 
     @Modifying
     @Transactional
