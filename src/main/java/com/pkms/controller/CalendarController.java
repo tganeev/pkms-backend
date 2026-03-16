@@ -106,7 +106,7 @@ public class CalendarController {
         } catch (Exception e) {
             log.error("Error in deleteEntry: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Error: " + e.getMessage());
+                    .body("Error deleting entry: " + e.getMessage());
         }
     }
 
@@ -143,6 +143,8 @@ public class CalendarController {
                     .body("Error: " + e.getMessage());
         }
     }
+
+
 
     @GetMapping("/test")
     public String test() {
