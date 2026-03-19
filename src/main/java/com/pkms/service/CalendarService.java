@@ -145,22 +145,172 @@ public class CalendarService {
     /**
      * Обновленный метод deleteEntry с компенсацией
      */
-    // Убираем @Transactional с метода и управляем транзакцией вручную
+    @Transactional
     public void deleteEntry(Long entryId, String username) {
         log.info("=== DELETE ENTRY ===");
         log.info("Entry ID: {}, Username: {}", entryId, username);
 
-        // Отдельная транзакция для поиска записи
-        CalendarEntry entry = findEntrySafely(entryId, username);
-        if (entry == null) {
-            return;
+        try {
+            CalendarEntry entry = calendarRepository.findById(entryId)
+                    .orElseThrow(() -> new RuntimeException("Entry not found"));
+
+            // Проверяем права
+            if (!entry.getUser().getUsername().equals(username)) {
+                throw new RuntimeException("Unauthorized");
+            }
+
+            // Находим стандарт по названию практики
+            Category category = categoryRepository.findByName(entry.getCategory())
+                    .orElseThrow(() -> new RuntimeException("Category not found"));
+
+            List<Standard> standards = standardRepository.findByCategoryId(category.getId());
+            Standard matchedStandard = standards.stream()
+                    .filter(s -> s.getName().equals(entry.getPractice()))
+                    .findFirst()
+                    .orElseThrow(() -> new RuntimeException("Standard not found"));
+
+            // Получаем все практики из стандарта
+            List<StandardPractice> standardPractices = standardPracticeRepository
+                    .findByStandardId(matchedStandard.getId());
+
+            // Для каждой практики в стандарте вычитаем значение
+            for (StandardPractice sp : standardPractices) {
+                if (Boolean.TRUE.equals(sp.getIsActive())) {
+                    Practice practice = sp.getPractice();
+                    Integer valueToSubtract = sp.getTargetValue();
+
+                    log.info("Removing value {} from practice {} in category {}",
+                            valueToSubtract, practice.getName(), practice.getCategory().getName());
+
+                    // Вычитаем значение из практики
+                    subtractFromPractice(practice, entry.getEntryDate(), valueToSubtract);
+
+                    // Проверяем связанные практики
+                    List<PracticeLink> links = practiceLinkRepository
+                            .findBySourcePracticeId(practice.getId());
+
+                    for (PracticeLink link : links) {
+                        Practice targetPractice = link.getTargetPractice();
+                        log.info("Also removing from linked practice: {} in category {}",
+                                targetPractice.getName(), targetPractice.getCategory().getName());
+
+                        subtractFromPractice(targetPractice, entry.getEntryDate(), valueToSubtract);
+                    }
+                }
+            }
+
+            // Удаляем запись из календаря
+            calendarRepository.delete(entry);
+
+            log.info("✅ Entry deleted successfully");
+
+        } catch (Exception e) {
+            log.error("Error deleting entry: {}", e.getMessage(), e);
+            throw e;
         }
+    }
 
-        // Компенсируем связанные практики в отдельной транзакции
-        compensateLinkedPracticesInNewTransaction(entry);
+    private void subtractFromPractice(Practice practice, LocalDate date, Integer valueToSubtract) {
+        String tableName = practice.getCategory().getName().toLowerCase() + "_practices";
+        String columnName = getColumnName(practice.getName());
 
-        // Удаляем запись из календаря в отдельной транзакции
-        deleteCalendarEntryInNewTransaction(entryId);
+        try {
+            Integer currentValue = getPracticeValue(tableName, columnName, date);
+
+            if (currentValue != null) {
+                int newValue = currentValue - valueToSubtract;
+                log.info("{}: {} → {}", columnName, currentValue, newValue);
+
+                if (newValue <= 0) {
+                    resetPracticeValue(tableName, columnName, date);
+                } else {
+                    updatePracticeValue(tableName, columnName, date, newValue);
+                }
+            }
+        } catch (Exception e) {
+            log.error("Error subtracting from practice {}: {}", practice.getName(), e.getMessage());
+        }
+    }
+
+
+
+    private void compensateTargetPractice(PracticeValueLog logEntry) {
+        Practice targetPractice = logEntry.getTargetPractice();
+        LocalDate date = logEntry.getEntryDate();
+        Integer valueToSubtract = logEntry.getValue();
+
+        log.info("Compensating target practice: {} in category {} for value {}",
+                targetPractice.getName(), targetPractice.getCategory().getName(), valueToSubtract);
+
+        String tableName = targetPractice.getCategory().getName().toLowerCase() + "_practices";
+        String columnName = getColumnName(targetPractice.getName());
+
+        try {
+            Integer currentValue = getPracticeValue(tableName, columnName, date);
+
+            if (currentValue != null) {
+                int newValue = currentValue - valueToSubtract;
+                log.info("Target {}: {} → {}", columnName, currentValue, newValue);
+
+                if (newValue <= 0) {
+                    resetPracticeValue(tableName, columnName, date);
+                } else {
+                    updatePracticeValue(tableName, columnName, date, newValue);
+                }
+            }
+        } catch (Exception e) {
+            log.error("Error compensating target practice: {}", e.getMessage(), e);
+        }
+    }
+
+    private void compensateSourcePractice(PracticeValueLog logEntry) {
+        Practice sourcePractice = logEntry.getSourcePractice();
+        LocalDate date = logEntry.getEntryDate();
+        Integer valueToSubtract = logEntry.getValue();
+
+        log.info("Compensating source practice: {} in category {} for value {}",
+                sourcePractice.getName(), sourcePractice.getCategory().getName(), valueToSubtract);
+
+        String tableName = sourcePractice.getCategory().getName().toLowerCase() + "_practices";
+        String columnName = getColumnName(sourcePractice.getName());
+
+        try {
+            Integer currentValue = getPracticeValue(tableName, columnName, date);
+
+            if (currentValue != null) {
+                int newValue = currentValue - valueToSubtract;
+                log.info("Source {}: {} → {}", columnName, currentValue, newValue);
+
+                if (newValue <= 0) {
+                    resetPracticeValue(tableName, columnName, date);
+                } else {
+                    updatePracticeValue(tableName, columnName, date, newValue);
+                }
+            }
+        } catch (Exception e) {
+            log.error("Error compensating source practice: {}", e.getMessage(), e);
+        }
+    }
+
+    private Integer getPracticeValue(String tableName, String columnName, LocalDate date) {
+        try {
+            String query = String.format("SELECT %s FROM %s WHERE entry_date = ?", columnName, tableName);
+            return jdbcTemplate.queryForObject(query, Integer.class, date);
+        } catch (EmptyResultDataAccessException e) {
+            return null;
+        }
+    }
+
+    private void resetPracticeValue(String tableName, String columnName, LocalDate date) {
+        String query = String.format("UPDATE %s SET %s = 0 WHERE entry_date = ?", tableName, columnName);
+        jdbcTemplate.update(query, date);
+        log.info("Reset {} to 0 for date {}", columnName, date);
+    }
+
+    private void updatePracticeValue(String tableName, String columnName, LocalDate date, Integer newValue) {
+        String query = String.format("UPDATE %s SET %s = ? WHERE entry_date = ?", tableName, columnName);
+        jdbcTemplate.update(query, newValue, date);
+        log.info("Updated {} to {} for date {}", columnName, newValue, date);
     }
 
     /**

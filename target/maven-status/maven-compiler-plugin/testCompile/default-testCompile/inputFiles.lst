@@ -1,1 +1,3 @@
 /opt/goinfre/kindlyfr/Projects/pkms/backend/src/test/java/com/pkms/PkmsBackendApplicationTests.java
+/opt/goinfre/kindlyfr/Projects/pkms/backend/src/test/java/com/pkms/integration/LinkedPracticesIntegrationTest.java
+/opt/goinfre/kindlyfr/Projects/pkms/backend/src/test/java/com/pkms/integration/SimpleDockerTest.java

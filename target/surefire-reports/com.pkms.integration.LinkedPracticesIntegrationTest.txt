@@ -1,0 +1,14 @@
+-------------------------------------------------------------------------------
+Test set: com.pkms.integration.LinkedPracticesIntegrationTest
+-------------------------------------------------------------------------------
+Tests run: 1, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 128.8 s <<< FAILURE! -- in com.pkms.integration.LinkedPracticesIntegrationTest
+com.pkms.integration.LinkedPracticesIntegrationTest.completeWorkflowTest -- Time elapsed: 122.9 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: expected: <31> but was: <37>
+	at org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:158)
+	at org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:139)
+	at org.junit.jupiter.api.AssertEquals.failNotEqual(AssertEquals.java:201)
+	at org.junit.jupiter.api.AssertEquals.assertEquals(AssertEquals.java:152)
+	at org.junit.jupiter.api.AssertEquals.assertEquals(AssertEquals.java:147)
+	at org.junit.jupiter.api.Assertions.assertEquals(Assertions.java:558)
+	at com.pkms.integration.LinkedPracticesIntegrationTest.completeWorkflowTest(LinkedPracticesIntegrationTest.java:328)
+
