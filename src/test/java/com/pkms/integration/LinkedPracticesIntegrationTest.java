@@ -17,6 +17,9 @@ import org.springframework.test.context.TestPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import java.util.ArrayList;
+import java.util.List;
+import org.junit.jupiter.api.Assertions;
 
 import java.time.LocalDate;
 import java.util.HashMap;
@@ -220,118 +223,163 @@ public class LinkedPracticesIntegrationTest {
         System.out.println("🔍 ТЕСТ: Полный цикл работы со связанными практиками");
         System.out.println("=================================\n");
 
-        // ШАГ 1: Проверяем начальные значения
-        System.out.println("📌 ШАГ 1: Проверяем начальные значения в БД:");
-        Map<String, Integer> initialCore = getAllCoreValues(testDate);
-        Integer initialYoga = getPracticeValue("Yoga", "Meditation", testDate);
+        testPassed = true;
 
-        System.out.println("  Core.Meditation = " + (initialCore.get("Meditation") == null ? 0 : initialCore.get("Meditation")));
-        System.out.println("  Core.Plank = " + (initialCore.get("Plank") == null ? 0 : initialCore.get("Plank")));
-        System.out.println("  Core.Squat = " + (initialCore.get("Squat") == null ? 0 : initialCore.get("Squat")));
-        System.out.println("  Yoga.Meditation = " + (initialYoga == null ? 0 : initialYoga));
+        try {
+            // ШАГ 1: Проверяем начальные значения
+            System.out.println("📌 ШАГ 1: Проверяем начальные значения в БД:");
+            Map<String, Integer> initialCore = getAllCoreValues(testDate);
+            Integer initialYoga = getPracticeValue("Yoga", "Meditation", testDate);
 
-        assertEquals(0, initialCore.get("Meditation") == null ? 0 : initialCore.get("Meditation"));
-        assertEquals(0, initialCore.get("Plank") == null ? 0 : initialCore.get("Plank"));
-        assertEquals(0, initialCore.get("Squat") == null ? 0 : initialCore.get("Squat"));
-        assertEquals(0, initialYoga == null ? 0 : initialYoga);
-        System.out.println("✅ Начальные значения корректны (все 0)\n");
+            System.out.println("  Core.Meditation = " + (initialCore.get("Meditation") == null ? 0 : initialCore.get("Meditation")));
+            System.out.println("  Core.Plank = " + (initialCore.get("Plank") == null ? 0 : initialCore.get("Plank")));
+            System.out.println("  Core.Squat = " + (initialCore.get("Squat") == null ? 0 : initialCore.get("Squat")));
+            System.out.println("  Yoga.Meditation = " + (initialYoga == null ? 0 : initialYoga));
 
-        Thread.sleep(500);
+            assertWithMessage("Начальные значения",
+                    initialCore.get("Meditation"), initialCore.get("Plank"), initialCore.get("Squat"), initialYoga,
+                    0, 0, 0, 0);
 
-        // ШАГ 2: Создаем событие Yoga
-        System.out.println("📌 ШАГ 2: Создаем событие: Yoga Standard");
-        EntryDTO yogaEntry = createEntry("Yoga", "Yoga Standard", testDate);
-        EntryDTO savedYogaEntry = calendarService.createEntry(yogaEntry, "test");
+            Thread.sleep(500);
 
-        EntryStatusDTO yogaStatus = new EntryStatusDTO();
-        yogaStatus.setEntryId(savedYogaEntry.getId());
-        yogaStatus.setStatus("completed");
-        yogaStatus.setNotes("");
+            // ШАГ 2: Создаем событие Yoga
+            System.out.println("\n📌 ШАГ 2: Создаем событие: Yoga Standard");
+            EntryDTO yogaEntry = createEntry("Yoga", "Yoga Standard", testDate);
+            EntryDTO savedYogaEntry = calendarService.createEntry(yogaEntry, "test");
 
-        calendarService.updateEntryStatus(savedYogaEntry.getId(), yogaStatus, "test");
-        System.out.println("  ✅ Событие Yoga Standard создано и переведено в статус 'Выполнено полностью'\n");
+            EntryStatusDTO yogaStatus = new EntryStatusDTO();
+            yogaStatus.setEntryId(savedYogaEntry.getId());
+            yogaStatus.setStatus("completed");
+            yogaStatus.setNotes("");
 
-        Thread.sleep(500);
+            calendarService.updateEntryStatus(savedYogaEntry.getId(), yogaStatus, "test");
+            System.out.println("  ✅ Событие Yoga Standard создано и переведено в статус 'Выполнено полностью'");
 
-        // Проверяем значения после Yoga
-        System.out.println("📌 Проверяем значения после Yoga:");
-        Map<String, Integer> afterYogaCore = getAllCoreValues(testDate);
-        Integer afterYoga = getPracticeValue("Yoga", "Meditation", testDate);
+            Thread.sleep(500);
 
-        System.out.println("  Core.Meditation = " + (afterYogaCore.get("Meditation") == null ? 0 : afterYogaCore.get("Meditation")));
-        System.out.println("  Core.Plank = " + (afterYogaCore.get("Plank") == null ? 0 : afterYogaCore.get("Plank")));
-        System.out.println("  Core.Squat = " + (afterYogaCore.get("Squat") == null ? 0 : afterYogaCore.get("Squat")));
-        System.out.println("  Yoga.Meditation = " + (afterYoga == null ? 0 : afterYoga));
+            // Проверяем значения после Yoga
+            System.out.println("\n📌 Проверяем значения после Yoga:");
+            Map<String, Integer> afterYogaCore = getAllCoreValues(testDate);
+            Integer afterYoga = getPracticeValue("Yoga", "Meditation", testDate);
 
-        assertEquals(0, afterYogaCore.get("Meditation") == null ? 0 : afterYogaCore.get("Meditation"));
-        assertEquals(0, afterYogaCore.get("Plank") == null ? 0 : afterYogaCore.get("Plank"));
-        assertEquals(0, afterYogaCore.get("Squat") == null ? 0 : afterYogaCore.get("Squat"));
-        assertEquals(31, afterYoga == null ? 0 : afterYoga);
-        System.out.println("✅ Значения корректны (только Yoga.Meditation = 31)\n");
+            System.out.println("  Core.Meditation = " + (afterYogaCore.get("Meditation") == null ? 0 : afterYogaCore.get("Meditation")));
+            System.out.println("  Core.Plank = " + (afterYogaCore.get("Plank") == null ? 0 : afterYogaCore.get("Plank")));
+            System.out.println("  Core.Squat = " + (afterYogaCore.get("Squat") == null ? 0 : afterYogaCore.get("Squat")));
+            System.out.println("  Yoga.Meditation = " + (afterYoga == null ? 0 : afterYoga));
 
-        Thread.sleep(500);
+            assertWithMessage("После Yoga",
+                    afterYogaCore.get("Meditation"), afterYogaCore.get("Plank"), afterYogaCore.get("Squat"), afterYoga,
+                    0, 0, 0, 31);
 
-        // ШАГ 3: Создаем событие Core
-        System.out.println("📌 ШАГ 3: Создаем событие: Core Standard");
-        EntryDTO coreEntry = createEntry("Core", "Core Standard", testDate);
-        EntryDTO savedCoreEntry = calendarService.createEntry(coreEntry, "test");
+            Thread.sleep(500);
 
-        EntryStatusDTO coreStatus = new EntryStatusDTO();
-        coreStatus.setEntryId(savedCoreEntry.getId());
-        coreStatus.setStatus("completed");
-        coreStatus.setNotes("");
+            // ШАГ 3: Создаем событие Core
+            System.out.println("\n📌 ШАГ 3: Создаем событие: Core Standard");
+            EntryDTO coreEntry = createEntry("Core", "Core Standard", testDate);
+            EntryDTO savedCoreEntry = calendarService.createEntry(coreEntry, "test");
 
-        calendarService.updateEntryStatus(savedCoreEntry.getId(), coreStatus, "test");
-        System.out.println("  ✅ Событие Core Standard создано и переведено в статус 'Выполнено полностью'\n");
+            EntryStatusDTO coreStatus = new EntryStatusDTO();
+            coreStatus.setEntryId(savedCoreEntry.getId());
+            coreStatus.setStatus("completed");
+            coreStatus.setNotes("");
 
-        Thread.sleep(500);
+            calendarService.updateEntryStatus(savedCoreEntry.getId(), coreStatus, "test");
+            System.out.println("  ✅ Событие Core Standard создано и переведено в статус 'Выполнено полностью'");
 
-        // Проверяем значения после Core
-        System.out.println("📌 Проверяем значения после Core:");
-        Map<String, Integer> afterCoreCore = getAllCoreValues(testDate);
-        Integer afterCoreYoga = getPracticeValue("Yoga", "Meditation", testDate);
+            Thread.sleep(30000);
 
-        System.out.println("  Core.Meditation = " + (afterCoreCore.get("Meditation") == null ? 0 : afterCoreCore.get("Meditation")));
-        System.out.println("  Core.Plank = " + (afterCoreCore.get("Plank") == null ? 0 : afterCoreCore.get("Plank")));
-        System.out.println("  Core.Squat = " + (afterCoreCore.get("Squat") == null ? 0 : afterCoreCore.get("Squat")));
-        System.out.println("  Yoga.Meditation = " + (afterCoreYoga == null ? 0 : afterCoreYoga));
+            // Проверяем значения после Core
+            System.out.println("\n📌 Проверяем значения после Core:");
+            Map<String, Integer> afterCoreCore = getAllCoreValues(testDate);
+            Integer afterCoreYoga = getPracticeValue("Yoga", "Meditation", testDate);
 
-        assertEquals(31, afterCoreCore.get("Meditation") == null ? 0 : afterCoreCore.get("Meditation"));
-        assertEquals(10, afterCoreCore.get("Plank") == null ? 0 : afterCoreCore.get("Plank"));
-        assertEquals(2, afterCoreCore.get("Squat") == null ? 0 : afterCoreCore.get("Squat"));
-        assertEquals(62, afterCoreYoga == null ? 0 : afterCoreYoga);
-        System.out.println("✅ Значения корректны (Core все практики = 31,10,2; Yoga.Meditation = 62)\n");
+            System.out.println("  Core.Meditation = " + (afterCoreCore.get("Meditation") == null ? 0 : afterCoreCore.get("Meditation")));
+            System.out.println("  Core.Plank = " + (afterCoreCore.get("Plank") == null ? 0 : afterCoreCore.get("Plank")));
+            System.out.println("  Core.Squat = " + (afterCoreCore.get("Squat") == null ? 0 : afterCoreCore.get("Squat")));
+            System.out.println("  Yoga.Meditation = " + (afterCoreYoga == null ? 0 : afterCoreYoga));
 
-        Thread.sleep(500);
+            assertWithMessage("После Core",
+                    afterCoreCore.get("Meditation"), afterCoreCore.get("Plank"), afterCoreCore.get("Squat"), afterCoreYoga,
+                    31, 10, 2, 62);
 
-        // ШАГ 4: Удаляем событие Core
-        System.out.println("📌 ШАГ 4: Удаляем событие: Core Standard");
-        calendarService.deleteEntry(savedCoreEntry.getId(), "test");
-        System.out.println("  ✅ Событие Core Standard удалено\n");
+            Thread.sleep(500);
 
-        Thread.sleep(120000);
+            // ШАГ 4: Удаляем событие Core
+            System.out.println("\n📌 ШАГ 4: Удаляем событие: Core Standard");
+            calendarService.deleteEntry(savedCoreEntry.getId(), "test");
+            System.out.println("  ✅ Событие Core Standard удалено");
 
-        // Проверяем финальные значения
-        System.out.println("📌 Проверяем значения после удаления Core:");
-        Map<String, Integer> finalCore = getAllCoreValues(testDate);
-        Integer finalYoga = getPracticeValue("Yoga", "Meditation", testDate);
+            Thread.sleep(500);
 
-        System.out.println("  Core.Meditation = " + (finalCore.get("Meditation") == null ? 0 : finalCore.get("Meditation")));
-        System.out.println("  Core.Plank = " + (finalCore.get("Plank") == null ? 0 : finalCore.get("Plank")));
-        System.out.println("  Core.Squat = " + (finalCore.get("Squat") == null ? 0 : finalCore.get("Squat")));
-        System.out.println("  Yoga.Meditation = " + (finalYoga == null ? 0 : finalYoga));
+            // Проверяем финальные значения
+            System.out.println("\n📌 Проверяем значения после удаления Core:");
+            Map<String, Integer> finalCore = getAllCoreValues(testDate);
+            Integer finalYoga = getPracticeValue("Yoga", "Meditation", testDate);
 
+            System.out.println("  Core.Meditation = " + (finalCore.get("Meditation") == null ? 0 : finalCore.get("Meditation")));
+            System.out.println("  Core.Plank = " + (finalCore.get("Plank") == null ? 0 : finalCore.get("Plank")));
+            System.out.println("  Core.Squat = " + (finalCore.get("Squat") == null ? 0 : finalCore.get("Squat")));
+            System.out.println("  Yoga.Meditation = " + (finalYoga == null ? 0 : finalYoga));
 
-            assertEquals(0, finalCore.get("Meditation") == null ? 0 : finalCore.get("Meditation"));
-            assertEquals(0, finalCore.get("Plank") == null ? 0 : finalCore.get("Plank"));
-            assertEquals(0, finalCore.get("Squat") == null ? 0 : finalCore.get("Squat"));
-            assertEquals(31, finalYoga == null ? 0 : finalYoga);
-
-            System.out.println("✅ Финальные значения корректны (Core все 0, Yoga.Meditation = 31)\n");
+            assertWithMessage("После удаления Core",
+                    finalCore.get("Meditation"), finalCore.get("Plank"), finalCore.get("Squat"), finalYoga,
+                    0, 0, 0, 31);
 
 
-        System.out.println("=================================");
-        System.out.println("✅ ТЕСТ УСПЕШНО ЗАВЕРШЕН");
-        System.out.println("=================================");
+
+        } catch (Exception e) {
+            testPassed = false;
+            System.out.println("\n❌ ОШИБКА ВЫПОЛНЕНИЯ ТЕСТА: " + e.getMessage());
+        }
+
+        // В самом конце, после всех проверок
+        if (!testPassed) {
+            System.out.println("\n=================================");
+            System.out.println("\n❌ ТЕСТ НЕ ПРОЙДЕН");
+            System.out.println("=================================");
+            System.exit(1); // Завершаем процесс с ошибкой
+        } else {
+            System.out.println("\n=================================");
+            System.out.println("✅ ТЕСТ УСПЕШНО ЗАВЕРШЕН");
+            System.out.println("=================================");
+        }
+    }
+
+    private boolean testPassed = true;
+
+    // Обновите метод assertWithMessage
+    private void assertWithMessage(String step, Integer coreMed, Integer corePlank, Integer coreSquat, Integer yogaMed,
+                                   int expCoreMed, int expCorePlank, int expCoreSquat, int expYogaMed) {
+
+        List<String> errors = new ArrayList<>();
+
+        int actualCoreMed = coreMed == null ? 0 : coreMed;
+        int actualCorePlank = corePlank == null ? 0 : corePlank;
+        int actualCoreSquat = coreSquat == null ? 0 : coreSquat;
+        int actualYogaMed = yogaMed == null ? 0 : yogaMed;
+
+        if (actualCoreMed != expCoreMed) {
+            errors.add(String.format("  • Core.Meditation: ожидалось %d, получено %d", expCoreMed, actualCoreMed));
+        }
+        if (actualCorePlank != expCorePlank) {
+            errors.add(String.format("  • Core.Plank: ожидалось %d, получено %d", expCorePlank, actualCorePlank));
+        }
+        if (actualCoreSquat != expCoreSquat) {
+            errors.add(String.format("  • Core.Squat: ожидалось %d, получено %d", expCoreSquat, actualCoreSquat));
+        }
+        if (actualYogaMed != expYogaMed) {
+            errors.add(String.format("  • Yoga.Meditation: ожидалось %d, получено %d", expYogaMed, actualYogaMed));
+        }
+
+        if (!errors.isEmpty()) {
+            System.out.println("\n❌ ОШИБКА В ШАГЕ \"" + step + "\":");
+            for (String error : errors) {
+                System.out.println(error);
+            }
+            System.out.println();
+            testPassed = false;
+        } else {
+            System.out.println("✅ Значения корректны");
+        }
     }
 }
