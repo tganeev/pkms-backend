@@ -286,7 +286,7 @@ public class LinkedPracticesIntegrationTest {
             calendarService.updateEntryStatus(savedCoreEntry.getId(), coreStatus, "test");
             System.out.println("  ✅ Событие Core Standard создано и переведено в статус 'Выполнено полностью'");
 
-            Thread.sleep(30000);
+            Thread.sleep(500);
 
             // Проверяем значения после Core
             System.out.println("\n📌 Проверяем значения после Core:");

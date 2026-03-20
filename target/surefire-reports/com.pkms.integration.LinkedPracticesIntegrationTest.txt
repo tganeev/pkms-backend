@@ -1,4 +1,4 @@
 -------------------------------------------------------------------------------
 Test set: com.pkms.integration.LinkedPracticesIntegrationTest
 -------------------------------------------------------------------------------
-Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 28.69 s -- in com.pkms.integration.LinkedPracticesIntegrationTest
+Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 9.631 s -- in com.pkms.integration.LinkedPracticesIntegrationTest

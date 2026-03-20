@@ -4,19 +4,24 @@
 /opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/config/WebConfig.java
 /opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/controller/CalendarController.java
 /opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/controller/CategoryController.java
+/opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/controller/LibraryController.java
 /opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/controller/PracticeController.java
 /opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/controller/StandardController.java
 /opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/dto/AddPracticeLinkRequest.java
+/opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/dto/BookDTO.java
 /opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/dto/CategoryDTO.java
 /opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/dto/CategoryTableDTO.java
 /opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/dto/EntryDTO.java
 /opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/dto/EntryStatusDTO.java
+/opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/dto/LibraryViewDTO.java
 /opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/dto/PracticeDTO.java
 /opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/dto/PracticeLinkDTO.java
+/opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/dto/ReadingStatDTO.java
 /opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/dto/StandardDTO.java
 /opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/dto/StandardPracticeDTO.java
 /opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/dto/StandardStatsDTO.java
 /opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/dto/WeekViewDTO.java
+/opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/model/Book.java
 /opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/model/CalendarEntry.java
 /opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/model/Category.java
 /opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/model/EntryStatus.java
@@ -24,6 +29,8 @@
 /opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/model/PracticeLink.java
 /opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/model/PracticeStandard.java
 /opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/model/PracticeValueLog.java
+/opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/model/ReadingStat.java
+/opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/model/ReadingStatId.java
 /opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/model/Standard.java
 /opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/model/StandardPractice.java
 /opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/model/StandardStats.java
@@ -32,6 +39,7 @@
 /opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/model/converter/RepeatIntervalConverter.java
 /opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/model/enums/Period.java
 /opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/model/enums/RepeatInterval.java
+/opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/repository/BookRepository.java
 /opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/repository/CalendarRepository.java
 /opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/repository/CategoryRepository.java
 /opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/repository/EntryStatusRepository.java
@@ -39,6 +47,7 @@
 /opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/repository/PracticeRepository.java
 /opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/repository/PracticeStandardRepository.java
 /opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/repository/PracticeValueLogRepository.java
+/opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/repository/ReadingStatRepository.java
 /opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/repository/StandardPracticeRepository.java
 /opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/repository/StandardRepository.java
 /opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/repository/StandardStatsRepository.java
@@ -48,5 +57,6 @@
 /opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/service/CategoryManagementService.java
 /opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/service/CategoryTableService.java
 /opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/service/DynamicTableService.java
+/opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/service/LibraryService.java
 /opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/service/PracticeLinkService.java
 /opt/goinfre/kindlyfr/Projects/pkms/backend/src/main/java/com/pkms/service/StandardService.java
