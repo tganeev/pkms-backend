@@ -21,6 +21,10 @@ public class Book {
 
     private String author;
 
+    // Новое поле - уникальный идентификатор книги
+    @Column(name = "identifier", unique = true)
+    private String identifier;
+
     @Column(nullable = false)
     private String status; // In plan, In process, Stopped, Completed, Loading
 

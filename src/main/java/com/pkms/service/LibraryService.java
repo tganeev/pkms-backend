@@ -43,6 +43,11 @@ public class LibraryService {
         book.setTotalPagesRead(0);
         book.setTotalHoursRead(0.0);
 
+        // Устанавливаем identifier если он есть
+        if (bookDTO.getIdentifier() != null) {
+            book.setIdentifier(bookDTO.getIdentifier());
+        }
+
         if (bookDTO.getCategoryId() != null) {
             Category category = categoryRepository.findById(bookDTO.getCategoryId())
                     .orElseThrow(() -> new RuntimeException("Category not found"));
@@ -52,6 +57,7 @@ public class LibraryService {
         Book savedBook = bookRepository.save(book);
         return convertToDTO(savedBook);
     }
+
 
     @Transactional
     public BookDTO updateBook(Long id, BookDTO bookDTO) {
@@ -65,6 +71,11 @@ public class LibraryService {
         book.setStatus(bookDTO.getStatus());
         book.setTotalPages(bookDTO.getTotalPages());
         book.setLanguage(bookDTO.getLanguage());
+
+        // Обновляем identifier если он изменился
+        if (bookDTO.getIdentifier() != null) {
+            book.setIdentifier(bookDTO.getIdentifier());
+        }
 
         if (bookDTO.getCategoryId() != null) {
             Category category = categoryRepository.findById(bookDTO.getCategoryId())

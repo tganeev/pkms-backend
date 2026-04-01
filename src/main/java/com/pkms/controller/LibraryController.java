@@ -3,6 +3,10 @@ package com.pkms.controller;
 import com.pkms.dto.BookDTO;
 import com.pkms.dto.LibraryViewDTO;
 import com.pkms.dto.ReadingStatDTO;
+import com.pkms.model.Book;
+import com.pkms.model.ReadingStat;
+import com.pkms.repository.BookRepository;
+import com.pkms.repository.ReadingStatRepository;
 import com.pkms.service.LibraryService;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -14,6 +18,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/library")
@@ -23,6 +28,8 @@ public class LibraryController {
     private static final Logger log = LoggerFactory.getLogger(LibraryController.class);
 
     private final LibraryService libraryService;
+    private final BookRepository bookRepository;
+    private final ReadingStatRepository readingStatRepository;
 
     @GetMapping
     public ResponseEntity<LibraryViewDTO> getLibraryView(
@@ -44,12 +51,27 @@ public class LibraryController {
     public ResponseEntity<List<BookDTO>> getAllBooks() {
         log.info("=== GET ALL BOOKS ===");
         try {
-            LocalDate now = LocalDate.now();
-            LibraryViewDTO view = libraryService.getLibraryView(now.minusMonths(1), now);
-            return ResponseEntity.ok(view.getBooks());
+            List<Book> books = bookRepository.findAll();
+            List<BookDTO> bookDTOs = books.stream()
+                    .map(this::convertToDTO)
+                    .collect(Collectors.toList());
+            return ResponseEntity.ok(bookDTOs);
         } catch (Exception e) {
             log.error("Error getting books: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    @GetMapping("/books/identifier/{identifier}")
+    public ResponseEntity<BookDTO> getBookByIdentifier(@PathVariable String identifier) {
+        log.info("=== GET BOOK BY IDENTIFIER: {} ===", identifier);
+        try {
+            Book book = bookRepository.findByIdentifier(identifier)
+                    .orElseThrow(() -> new RuntimeException("Book not found"));
+            return ResponseEntity.ok(convertToDTO(book));
+        } catch (Exception e) {
+            log.error("Error getting book by identifier: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
         }
     }
 
@@ -115,5 +137,24 @@ public class LibraryController {
             log.error("Error deleting reading stat: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
+    }
+
+    private BookDTO convertToDTO(Book book) {
+        BookDTO dto = new BookDTO();
+        dto.setId(book.getId());
+        dto.setTitle(book.getTitle());
+        dto.setAuthor(book.getAuthor());
+        dto.setStatus(book.getStatus());
+        dto.setTotalPages(book.getTotalPages());
+        dto.setLanguage(book.getLanguage());
+        dto.setTotalPagesRead(book.getTotalPagesRead());
+        dto.setTotalHoursRead(book.getTotalHoursRead());
+
+        if (book.getCategory() != null) {
+            dto.setCategoryId(book.getCategory().getId());
+            dto.setCategoryName(book.getCategory().getName());
+        }
+
+        return dto;
     }
 }

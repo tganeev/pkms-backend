@@ -8,6 +8,7 @@ public class BookDTO {
     private Long id;
     private String title;
     private String author;
+    private String identifier;  // Новое поле
     private String status;
     private Integer totalPages;
     private String language;

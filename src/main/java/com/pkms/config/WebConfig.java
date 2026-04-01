@@ -10,7 +10,7 @@ public class WebConfig implements WebMvcConfigurer {
     @Override
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/**")  // Разрешить все эндпоинты
-                .allowedOrigins("http://localhost:3000", "file://", "null")  // Разрешить React и локальные файлы
+                .allowedOrigins("http://localhost:3000", "file://", "null", "https://my-pkms.ru" )  // Разрешить React и локальные файлы
                 .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
                 .allowedHeaders("*")
                 .allowCredentials(true)
