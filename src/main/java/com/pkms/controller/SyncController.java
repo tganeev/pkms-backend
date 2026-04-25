@@ -1,12 +1,9 @@
 package com.pkms.controller;
 
-import com.pkms.dto.SyncRequestDTO;
-import com.pkms.dto.SyncBookDTO;
-import com.pkms.dto.SyncReadingStatDTO;
+import com.pkms.dto.*;
 import com.pkms.model.Book;
 import com.pkms.model.ReadingStat;
 import com.pkms.model.ReadingStatId;
-import com.pkms.model.Category;
 import com.pkms.repository.BookRepository;
 import com.pkms.repository.ReadingStatRepository;
 import com.pkms.repository.CategoryRepository;
@@ -19,7 +16,9 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -33,6 +32,10 @@ public class SyncController {
     private final ReadingStatRepository readingStatRepository;
     private final CategoryRepository categoryRepository;
 
+    /**
+     * Эндпоинт для отправки данных с мобильного устройства на сервер
+     * POST /api/sync
+     */
     @PostMapping
     @Transactional
     public ResponseEntity<?> syncData(@RequestBody SyncRequestDTO syncRequest) {
@@ -65,9 +68,8 @@ public class SyncController {
 
                 // Устанавливаем категорию, если указана
                 if (syncBook.getCategoryId() != null) {
-                    Category category = categoryRepository.findById(syncBook.getCategoryId())
-                            .orElse(null);
-                    book.setCategory(category);
+                    categoryRepository.findById(syncBook.getCategoryId())
+                            .ifPresent(book::setCategory);
                 }
 
                 // Устанавливаем статус по умолчанию, если книга новая
@@ -93,8 +95,8 @@ public class SyncController {
                     double totalHoursFromStats = 0.0;
 
                     for (SyncReadingStatDTO syncStat : syncBook.getReadingStats()) {
-                        ReadingStatId statId = new ReadingStatId(savedBook, syncStat.getDate());
-                        ReadingStat stat = readingStatRepository.findById(statId)
+                        ReadingStat stat = readingStatRepository
+                                .findById(new ReadingStatId(savedBook, syncStat.getDate()))
                                 .orElse(new ReadingStat());
 
                         boolean isNewStat = (stat.getBook() == null);
@@ -112,7 +114,6 @@ public class SyncController {
                             statsUpdated++;
                         }
 
-                        // Суммируем для обновления общих значений книги
                         totalPagesFromStats += syncStat.getPagesRead();
                         totalHoursFromStats += syncStat.getHoursRead();
                     }
@@ -147,8 +148,85 @@ public class SyncController {
         }
     }
 
+    /**
+     * Эндпоинт для загрузки данных с сервера на мобильное устройство (история)
+     * POST /api/sync/history
+     */
+    @PostMapping("/history")
+    public ResponseEntity<SyncHistoryResponse> syncHistory(@RequestBody SyncHistoryRequest request) {
+        log.info("=== SYNC HISTORY FROM SERVER ===");
+        log.info("Username: {}", request.getUsername());
+        log.info("Last sync timestamp: {}", request.getLastSyncTimestamp());
+
+        SyncHistoryResponse response = new SyncHistoryResponse();
+
+        try {
+            SyncHistoryData data = new SyncHistoryData();
+            List<SyncBookHistory> books = new ArrayList<>();
+            List<SyncReadingStatHistory> stats = new ArrayList<>();
+
+            // Получаем все книги из базы данных
+            List<Book> allBooks = bookRepository.findAll();
+
+            for (Book book : allBooks) {
+                // Пропускаем книги без identifier
+                if (book.getIdentifier() == null || book.getIdentifier().isEmpty()) {
+                    log.warn("Skipping book without identifier: {}", book.getTitle());
+                    continue;
+                }
+
+                // Конвертируем книгу в DTO для истории
+                SyncBookHistory bookHistory = new SyncBookHistory();
+                bookHistory.setServerId(book.getIdentifier());
+                bookHistory.setTitle(book.getTitle());
+                bookHistory.setAuthor(book.getAuthor());
+                bookHistory.setTotalPages(book.getTotalPages());
+                bookHistory.setCurrentPage(book.getTotalPagesRead());
+                bookHistory.setReadingTime((long) (book.getTotalHoursRead() * 3600));
+                bookHistory.setStatus(book.getStatus());
+
+                if (book.getUpdatedAt() != null) {
+                    bookHistory.setLastReadDate(book.getUpdatedAt().toEpochSecond(java.time.ZoneOffset.UTC) * 1000);
+                }
+
+                books.add(bookHistory);
+
+                // Получаем статистику чтения для каждой книги
+                List<ReadingStat> readingStats = readingStatRepository.findByBookId(book.getId());
+                for (ReadingStat stat : readingStats) {
+                    SyncReadingStatHistory statHistory = new SyncReadingStatHistory();
+                    statHistory.setBookServerId(book.getIdentifier());
+                    statHistory.setDate(stat.getDate().toString());
+                    statHistory.setPagesRead(stat.getPagesRead());
+                    statHistory.setHoursRead(stat.getHoursRead());
+                    stats.add(statHistory);
+                }
+            }
+
+            data.setBooks(books);
+            data.setReadingStats(stats);
+            data.setLastSyncTimestamp(System.currentTimeMillis());
+
+            response.setSuccess(true);
+            response.setData(data);
+
+            log.info("History sync completed: {} books, {} stats", books.size(), stats.size());
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            log.error("Error during history sync: {}", e.getMessage(), e);
+            response.setSuccess(false);
+            response.setError(e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
+
+    /**
+     * Тестовый эндпоинт для проверки работоспособности
+     * GET /api/sync/test
+     */
     @GetMapping("/test")
-    public ResponseEntity<?> testSync() {
+    public ResponseEntity<Map<String, String>> testSync() {
         log.info("=== TEST SYNC ENDPOINT ===");
         Map<String, String> response = new HashMap<>();
         response.put("status", "OK");
